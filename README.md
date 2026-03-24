@@ -32,12 +32,6 @@
 不要只读 README，请先克隆仓库，进入仓库目录，再读取并执行 `install.md`。
 ```
 
-## 文件说明
-
-- `README.md`：给人看，告诉人怎么把任务交给 agent
-- `install.md`：给 agent 看，里面是安装步骤
-- `SKILL.md`：给已经装好的 agent 调用这个 skill 时使用
-
 ## 这东西会装什么
 
 安装完成后，环境里应该有这些东西：
@@ -49,7 +43,4 @@
 
 ## 提醒
 
-- 如果 agent 会改 `PATH`，装完后最好重开终端
 - 下载模型可能比较慢
-- Windows 优先用 PowerShell
-- macOS / Linux 优先用 `transcribe.sh`
