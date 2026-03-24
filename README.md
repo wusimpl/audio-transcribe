@@ -12,8 +12,7 @@
 - `ffmpeg` 或 `ffmpeg.exe`
 - 模型文件 `~/.openclaw/models/ggml-large-v3-turbo.bin`
 - 这个 skill 被放进 Agent 自己的 skill 目录
-- skill 目录里至少包含 `SKILL.md`
-- skill 目录里包含实际执行脚本：`transcribe.sh`，Windows 场景还应包含 `transcribe.ps1` 和 `install-windows.ps1`
+- skill 目录里只放 `SKILL.md` 和当前系统实际要用的脚本
 
 ## 安装时的人类提示要求
 
@@ -44,11 +43,15 @@
 以 OpenClaw / 龙虾 这类本地 skill 目录为例，可参考这种结构：
 
 ```text
+macOS / Linux:
 ~/.openclaw/skills/audio-transcribe/
 ├── SKILL.md
-├── transcribe.sh
-├── transcribe.ps1
-└── install-windows.ps1
+└── transcribe.sh
+
+Windows:
+~/.openclaw/skills/audio-transcribe/
+├── SKILL.md
+└── transcribe.ps1
 ```
 
 如果你的 Agent 使用的是别的 skill 根目录，也一样处理：
@@ -66,7 +69,14 @@
 
 ```bash
 mkdir -p ~/.openclaw/skills/audio-transcribe
-cp -R ./* ~/.openclaw/skills/audio-transcribe/
+cp SKILL.md transcribe.sh ~/.openclaw/skills/audio-transcribe/
+```
+
+Windows 示例：
+
+```powershell
+New-Item -ItemType Directory -Force ~/.openclaw/skills/audio-transcribe
+Copy-Item SKILL.md, transcribe.ps1 ~/.openclaw/skills/audio-transcribe/
 ```
 
 如果不是 OpenClaw / 龙虾，就把目标路径替换成你的 Agent 实际使用的 skill 目录。
@@ -88,38 +98,25 @@ if [ ! -f "$MODEL_FILE" ]; then
 fi
 ```
 
-### Windows PowerShell（推荐）
+### Windows PowerShell
 
-先进入 skill 目录，再执行：
+建议在普通目录先完成依赖安装，再把 `SKILL.md` 和 `transcribe.ps1` 放入 skill 目录。
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
+# 安装 whisper-cli 和 ffmpeg，并确保它们已加入 PATH
+# 下载模型到 $HOME\.openclaw\models\ggml-large-v3-turbo.bin
 ```
 
 说明：
 - 支持 Windows PowerShell 5.1 和 PowerShell 7+
 - 如果安装过程中更新了 PATH，重新打开终端最稳妥
-- 如果模型已经存在，可加 `-SkipModelDownload`
-
-### Windows Git Bash
-
-```bash
-# 手动安装 whisper-cli 和 ffmpeg，并加入 PATH
-
-MODEL_DIR="$USERPROFILE/.openclaw/models"
-MODEL_FILE="$MODEL_DIR/ggml-large-v3-turbo.bin"
-if [ ! -f "$MODEL_FILE" ]; then
-    mkdir -p "$MODEL_DIR"
-    curl -L -o "$MODEL_FILE" \
-      "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin"
-fi
-```
+- Windows 运行时只需要 `SKILL.md` 和 `transcribe.ps1`
 
 ## 安装后验证
 
 请在 skill 目录内执行。
 
-### macOS / Linux / Git Bash
+### macOS / Linux
 
 ```bash
 ./transcribe.sh /path/to/audio.ogg zh
@@ -139,9 +136,9 @@ fi
 
 - `SKILL.md` 是给 Agent 读的入口说明
 - Agent 必须能扫描到这个 skill 所在目录
-- macOS / Linux 一般调用 `./transcribe.sh`
-- Windows PowerShell 一般调用 `.\transcribe.ps1`
-- Windows Git Bash 只有在不用 PowerShell 时再使用 `./transcribe.sh`
+- skill 目录里只放当前系统真正会执行的脚本
+- macOS / Linux 使用 `./transcribe.sh`
+- Windows 使用 `.\transcribe.ps1`
 
 ## 常见问题
 
@@ -152,7 +149,6 @@ fi
 | `ffmpeg not found` | 安装 ffmpeg 并加入 PATH |
 | `Model file not found` | 下载模型到 `~/.openclaw/models/` |
 | Windows 路径带空格 | 用引号包住完整路径 |
-| Git Bash 下找不到 `C:\...` 文件 | 改用 `/c/...` 路径，或直接用 PowerShell |
 
 ## 说明
 
