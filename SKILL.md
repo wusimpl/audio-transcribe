@@ -1,6 +1,6 @@
 ---
 name: audio-transcribe
-description: Transcribe audio messages and voice notes to text using local whisper-cli. Choose the correct command by operating system: use Bash on macOS/Linux, PowerShell on Windows, and Git Bash only when PowerShell is unavailable.
+description: "Transcribe audio messages and voice notes to text using local whisper-cli. Choose the correct command by operating system: use Bash on macOS/Linux, PowerShell on Windows, and Git Bash only when PowerShell is unavailable."
 ---
 
 # Audio Transcription Skill
