@@ -1,5 +1,11 @@
 # Audio Transcribe - Agent 安装指南
 
+> ⚠️ **这是给 Agent 读的文档。人类不需要读，把仓库链接扔给 Agent 就好。**
+> 
+> 时代变了。安装软件只需一个 prompt。
+
+---
+
 ## 一句话描述
 基于 whisper.cpp 的本地语音转文字工具，支持自动格式转换。
 
