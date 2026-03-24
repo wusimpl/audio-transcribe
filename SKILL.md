@@ -60,7 +60,7 @@ WHISPER_MODEL=/path/to/model.bin scripts/transcribe.sh audio.ogg
 
 ```bash
 # Clone and setup
-git clone git@github.com:wusimpl/audio-transcribe.git
+git clone https://github.com/wusimpl/audio-transcribe.git
 cd audio-transcribe
 
 # Install dependencies if missing

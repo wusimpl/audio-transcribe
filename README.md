@@ -13,7 +13,7 @@
 
 ```bash
 # 1. 克隆仓库
-git clone git@github.com:wusimpl/audio-transcribe.git
+git clone https://github.com/wusimpl/audio-transcribe.git
 cd audio-transcribe
 
 # 2. 检查依赖（whisper-cli 和 ffmpeg）
