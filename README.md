@@ -9,7 +9,7 @@
 把下面这段话直接发给你的 agent：
 
 ```text
-请先克隆这个仓库：git@github.com:wusimpl/audio-transcribe.git
+请先克隆这个仓库：https://github.com/wusimpl/audio-transcribe.git
 
 如果本地已经有这个仓库，就先进入仓库目录并拉取最新内容。
 
