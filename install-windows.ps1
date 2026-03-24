@@ -5,6 +5,8 @@ param(
     [switch]$SkipModelDownload
 )
 
+$ErrorActionPreference = 'Stop'
+
 # Fix encoding for Windows PowerShell
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -15,156 +17,188 @@ Write-Host ""
 # Check if running as admin
 $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
 if (-not $isAdmin) {
-    Write-Host "Note: Not running as Administrator. Some operations may fail." -ForegroundColor Yellow
+    Write-Host "Note: Not running as Administrator. User-level install will be used." -ForegroundColor Yellow
 }
 
-# Create directories
-$installDir = "$env:USERPROFILE\tools"
-$modelDir = "$env:USERPROFILE\.openclaw\models"
+$installDir = Join-Path $env:USERPROFILE 'tools'
+$modelDir = Join-Path $env:USERPROFILE '.openclaw\models'
+$whisperInstallDir = Join-Path $installDir 'whisper'
+
 New-Item -ItemType Directory -Force -Path $installDir | Out-Null
 New-Item -ItemType Directory -Force -Path $modelDir | Out-Null
+New-Item -ItemType Directory -Force -Path $whisperInstallDir | Out-Null
 
 Write-Host "Install directory: $installDir" -ForegroundColor Gray
 Write-Host "Model directory: $modelDir" -ForegroundColor Gray
 Write-Host ""
 
-# Function to add to PATH
 function Add-ToPath {
-    param([string]$dir)
-    $currentPath = [Environment]::GetEnvironmentVariable("PATH", "User")
-    if ($currentPath -notlike "*$dir*") {
-        [Environment]::SetEnvironmentVariable("PATH", "$currentPath;$dir", "User")
-        Write-Host "Added $dir to PATH (restart terminal to apply)" -ForegroundColor Green
+    param([string]$Dir)
+
+    $currentPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
+    if ([string]::IsNullOrWhiteSpace($currentPath)) {
+        $newPath = $Dir
+    } elseif (($currentPath -split ';') -contains $Dir) {
+        Write-Host "$Dir already in PATH" -ForegroundColor Green
+        return
     } else {
-        Write-Host "$dir already in PATH" -ForegroundColor Green
+        $newPath = "$currentPath;$Dir"
+    }
+
+    [Environment]::SetEnvironmentVariable('PATH', $newPath, 'User')
+    $env:PATH = "$Dir;$env:PATH"
+    Write-Host "Added $Dir to PATH" -ForegroundColor Green
+}
+
+function Download-File {
+    param(
+        [Parameter(Mandatory = $true)][string]$Url,
+        [Parameter(Mandatory = $true)][string]$OutFile,
+        [int]$TimeoutSec = 180
+    )
+
+    Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing -TimeoutSec $TimeoutSec
+    if (-not (Test-Path $OutFile)) {
+        throw "Download failed: $Url"
     }
 }
 
-# Check/Download whisper-cli
-Write-Host "Checking whisper-cli..." -ForegroundColor Yellow
-$whisperCli = Get-Command whisper-cli.exe -ErrorAction SilentlyContinue
-if (-not $whisperCli) {
-    Write-Host "Downloading whisper-cli..." -ForegroundColor Cyan
-    
-    # Try multiple URLs
+function Get-ExistingCommand {
+    param([string[]]$Names)
+
+    foreach ($name in $Names) {
+        $cmd = Get-Command $name -ErrorAction SilentlyContinue
+        if ($cmd) {
+            return $cmd
+        }
+    }
+
+    return $null
+}
+
+function Install-WhisperCli {
+    Write-Host 'Checking whisper-cli...' -ForegroundColor Yellow
+
+    $existing = Get-ExistingCommand -Names @('whisper-cli', 'whisper-cli.exe')
+    if ($existing) {
+        Write-Host "whisper-cli found: $($existing.Source)" -ForegroundColor Green
+        return
+    }
+
+    Write-Host 'Downloading whisper-cli...' -ForegroundColor Cyan
+
     $urls = @(
-        "https://github.com/ggerganov/whisper.cpp/releases/download/v1.7.4/whisper-blas-bin-x64.zip",
-        "https://github.com/ggerganov/whisper.cpp/releases/download/v1.7.3/whisper-blas-bin-x64.zip",
-        "https://github.com/ggerganov/whisper.cpp/releases/download/v1.7.2/whisper-blas-bin-x64.zip"
+        'https://github.com/ggml-org/whisper.cpp/releases/download/v1.7.6/whisper-bin-x64.zip',
+        'https://github.com/ggml-org/whisper.cpp/releases/download/v1.7.5/whisper-bin-x64.zip',
+        'https://github.com/ggml-org/whisper.cpp/releases/download/v1.7.4/whisper-bin-x64.zip',
+        'https://github.com/ggerganov/whisper.cpp/releases/download/v1.7.4/whisper-blas-bin-x64.zip'
     )
-    
-    $downloaded = $false
+
     foreach ($url in $urls) {
-        $zipFile = "$env:TEMP\whisper_$(Get-Random).zip"
+        $zipFile = Join-Path $env:TEMP ("whisper_{0}.zip" -f ([guid]::NewGuid().ToString('N')))
+        $extractDir = Join-Path $env:TEMP ("whisper_extract_{0}" -f ([guid]::NewGuid().ToString('N')))
+
         try {
             Write-Host "Trying $url..." -ForegroundColor Gray
-            Invoke-WebRequest -Uri $url -OutFile $zipFile -UseBasicParsing -TimeoutSec 120
-            
-            if (Test-Path $zipFile) {
-                Expand-Archive -Path $zipFile -DestinationPath "$installDir\whisper" -Force
-                Remove-Item $zipFile
-                Add-ToPath "$installDir\whisper"
-                Write-Host "whisper-cli installed to $installDir\whisper" -ForegroundColor Green
-                $downloaded = $true
-                break
+            Download-File -Url $url -OutFile $zipFile -TimeoutSec 180
+            Expand-Archive -Path $zipFile -DestinationPath $extractDir -Force
+
+            $whisperExe = Get-ChildItem $extractDir -Recurse -Filter 'whisper-cli.exe' | Select-Object -First 1
+            if (-not $whisperExe) {
+                throw 'whisper-cli.exe not found in archive'
             }
+
+            Copy-Item (Join-Path $whisperExe.Directory.FullName '*') $whisperInstallDir -Recurse -Force
+            Add-ToPath $whisperInstallDir
+            Write-Host "whisper-cli installed to $whisperInstallDir" -ForegroundColor Green
+            return
         } catch {
-            Write-Host "Failed to download from $url : $_" -ForegroundColor Red
-            if (Test-Path $zipFile) { Remove-Item $zipFile -Force }
+            Write-Host "Failed from $url : $($_.Exception.Message)" -ForegroundColor Red
+        } finally {
+            if (Test-Path $zipFile) { Remove-Item $zipFile -Force -ErrorAction SilentlyContinue }
+            if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue }
         }
     }
-    
-    if (-not $downloaded) {
-        Write-Error "Failed to download whisper-cli. Please install manually from: https://github.com/ggerganov/whisper.cpp/releases"
-        exit 1
-    }
-} else {
-    Write-Host "whisper-cli found: $($whisperCli.Source)" -ForegroundColor Green
+
+    throw 'Failed to download whisper-cli. Please install manually from the whisper.cpp releases page.'
 }
 
-Write-Host ""
+function Install-Ffmpeg {
+    Write-Host 'Checking ffmpeg...' -ForegroundColor Yellow
 
-# Check/Download ffmpeg
-Write-Host "Checking ffmpeg..." -ForegroundColor Yellow
-$ffmpeg = Get-Command ffmpeg.exe -ErrorAction SilentlyContinue
-if (-not $ffmpeg) {
-    Write-Host "Downloading ffmpeg..." -ForegroundColor Cyan
-    
-    # Use a more reliable mirror
-    $ffmpegUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-    $zipFile = "$env:TEMP\ffmpeg_$(Get-Random).zip"
-    
+    $existing = Get-ExistingCommand -Names @('ffmpeg', 'ffmpeg.exe')
+    if ($existing) {
+        Write-Host "ffmpeg found: $($existing.Source)" -ForegroundColor Green
+        return
+    }
+
+    Write-Host 'Downloading ffmpeg...' -ForegroundColor Cyan
+
+    $ffmpegUrl = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip'
+    $zipFile = Join-Path $env:TEMP ("ffmpeg_{0}.zip" -f ([guid]::NewGuid().ToString('N')))
+    $extractDir = Join-Path $env:TEMP ("ffmpeg_extract_{0}" -f ([guid]::NewGuid().ToString('N')))
+
     try {
-        Invoke-WebRequest -Uri $ffmpegUrl -OutFile $zipFile -UseBasicParsing -TimeoutSec 180
-        
-        if (Test-Path $zipFile) {
-            Expand-Archive -Path $zipFile -DestinationPath "$env:TEMP\ffmpeg_extract" -Force
-            
-            # Find the bin directory
-            $ffmpegBin = Get-ChildItem "$env:TEMP\ffmpeg_extract" -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
-            if ($ffmpegBin) {
-                $binDir = $ffmpegBin.Directory.FullName
-                Copy-Item "$binDir\*" $installDir -Force
-                Add-ToPath $installDir
-                Write-Host "ffmpeg installed to $installDir" -ForegroundColor Green
-            } else {
-                Write-Error "Could not find ffmpeg.exe in downloaded archive"
-            }
-            
-            Remove-Item $zipFile -Force
-            Remove-Item "$env:TEMP\ffmpeg_extract" -Recurse -Force
+        Download-File -Url $ffmpegUrl -OutFile $zipFile -TimeoutSec 240
+        Expand-Archive -Path $zipFile -DestinationPath $extractDir -Force
+
+        $ffmpegExe = Get-ChildItem $extractDir -Recurse -Filter 'ffmpeg.exe' | Select-Object -First 1
+        if (-not $ffmpegExe) {
+            throw 'ffmpeg.exe not found in archive'
         }
-    } catch {
-        Write-Error "Failed to download ffmpeg: $_"
-        Write-Host "Please install manually from: https://ffmpeg.org/download.html" -ForegroundColor Yellow
+
+        Copy-Item (Join-Path $ffmpegExe.Directory.FullName '*') $installDir -Force
+        Add-ToPath $installDir
+        Write-Host "ffmpeg installed to $installDir" -ForegroundColor Green
+    } finally {
+        if (Test-Path $zipFile) { Remove-Item $zipFile -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue }
     }
-} else {
-    Write-Host "ffmpeg found: $($ffmpeg.Source)" -ForegroundColor Green
 }
 
-Write-Host ""
+function Install-Model {
+    if ($SkipModelDownload) {
+        return
+    }
 
-# Download model
-if (-not $SkipModelDownload) {
-    Write-Host "Checking model file..." -ForegroundColor Yellow
-    $modelFile = "$modelDir\ggml-large-v3-turbo.bin"
-    if (-not (Test-Path $modelFile)) {
-        Write-Host "Downloading whisper model (this may take a while)..." -ForegroundColor Cyan
-        
-        # Try multiple sources
-        $modelUrls = @(
-            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
-            "https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin"
-        )
-        
-        $downloaded = $false
-        foreach ($url in $modelUrls) {
-            try {
-                Write-Host "Trying $url..." -ForegroundColor Gray
-                Invoke-WebRequest -Uri $url -OutFile $modelFile -UseBasicParsing -TimeoutSec 300
-                
-                if (Test-Path $modelFile) {
-                    Write-Host "Model downloaded to $modelFile" -ForegroundColor Green
-                    $downloaded = $true
-                    break
-                }
-            } catch {
-                Write-Host "Failed from $url : $_" -ForegroundColor Red
-            }
-        }
-        
-        if (-not $downloaded) {
-            Write-Error "Failed to download model. Please download manually from: https://huggingface.co/ggerganov/whisper.cpp"
-        }
-    } else {
+    Write-Host 'Checking model file...' -ForegroundColor Yellow
+    $modelFile = Join-Path $modelDir 'ggml-large-v3-turbo.bin'
+    if (Test-Path $modelFile) {
         Write-Host "Model file already exists: $modelFile" -ForegroundColor Green
+        return
     }
+
+    Write-Host 'Downloading whisper model (this may take a while)...' -ForegroundColor Cyan
+
+    $modelUrls = @(
+        'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin',
+        'https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin'
+    )
+
+    foreach ($url in $modelUrls) {
+        try {
+            Write-Host "Trying $url..." -ForegroundColor Gray
+            Download-File -Url $url -OutFile $modelFile -TimeoutSec 600
+            Write-Host "Model downloaded to $modelFile" -ForegroundColor Green
+            return
+        } catch {
+            Write-Host "Failed from $url : $($_.Exception.Message)" -ForegroundColor Red
+            if (Test-Path $modelFile) { Remove-Item $modelFile -Force -ErrorAction SilentlyContinue }
+        }
+    }
+
+    throw 'Failed to download model. Please download it manually from the whisper.cpp model repository.'
 }
 
-Write-Host ""
-Write-Host "Setup complete!" -ForegroundColor Green
-Write-Host ""
-Write-Host "Usage:" -ForegroundColor Cyan
+Install-WhisperCli
+Write-Host ''
+Install-Ffmpeg
+Write-Host ''
+Install-Model
+Write-Host ''
+Write-Host 'Setup complete!' -ForegroundColor Green
+Write-Host ''
+Write-Host 'Usage:' -ForegroundColor Cyan
 Write-Host "  .\transcribe.ps1 -File 'C:\path\to\audio.ogg' -Language zh"
-Write-Host ""
-Write-Host "Note: You may need to restart your terminal for PATH changes to take effect."
+Write-Host ''
+Write-Host 'If PATH was updated, a new terminal window will also pick it up automatically.'
