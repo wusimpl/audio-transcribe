@@ -1,13 +1,31 @@
 #!/bin/bash
 # Audio transcription script using whisper-cli
 # Handles OGG/Opus to WAV conversion automatically
+# Cross-platform: macOS, Linux, Windows (Git Bash/WSL)
 
 set -e
 
+# Detect OS and set platform-specific defaults
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]]; then
+    # Windows (Git Bash)
+    PLATFORM="windows"
+    DEFAULT_MODEL="$USERPROFILE/.openclaw/models/ggml-large-v3-turbo.bin"
+    DEFAULT_TEMP="$TEMP"
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    PLATFORM="linux"
+    DEFAULT_MODEL="$HOME/.openclaw/models/ggml-large-v3-turbo.bin"
+    DEFAULT_TEMP="/tmp"
+else
+    # macOS and others
+    PLATFORM="macos"
+    DEFAULT_MODEL="$HOME/.openclaw/models/ggml-large-v3-turbo.bin"
+    DEFAULT_TEMP="/tmp"
+fi
+
 # Configuration
-WHISPER_MODEL="${WHISPER_MODEL:-/Users/williamsandy/.openclaw/models/ggml-large-v3-turbo.bin}"
+WHISPER_MODEL="${WHISPER_MODEL:-$DEFAULT_MODEL}"
 LANGUAGE="${LANGUAGE:-zh}"
-TEMP_DIR="${TEMP_DIR:-/tmp}"
+TEMP_DIR="${TEMP_DIR:-$DEFAULT_TEMP}"
 
 # Check arguments
 if [ $# -lt 1 ]; then
@@ -19,6 +37,12 @@ fi
 INPUT_FILE="$1"
 LANG="${2:-$LANGUAGE}"
 
+# Convert Windows path to Unix path if needed (for Git Bash)
+if [[ "$PLATFORM" == "windows" && "$INPUT_FILE" =~ ^[A-Za-z]: ]]; then
+    # Convert C:\path\to\file to /c/path/to/file
+    INPUT_FILE=$(echo "$INPUT_FILE" | sed 's/\\/\//g' | sed 's/^\([A-Za-z]\):\/\//\1\//')
+fi
+
 # Check if input file exists
 if [ ! -f "$INPUT_FILE" ]; then
     echo "Error: Input file not found: $INPUT_FILE" >&2
@@ -28,6 +52,7 @@ fi
 # Check if whisper-cli is available
 if ! command -v whisper-cli &> /dev/null; then
     echo "Error: whisper-cli not found in PATH" >&2
+    echo "Please install whisper.cpp first" >&2
     exit 1
 fi
 
